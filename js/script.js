@@ -1,411 +1,210 @@
 // ==========================================
-// BLOG APPLICATION JAVASCRIPT
+// BLOG APPLICATION FRONTEND
+// Connected to Node.js + Express Backend
 // ==========================================
 
+const API_URL = "http://localhost:5000/api";
+
+// ==========================================
+// HELPER FUNCTIONS
+// ==========================================
+
+function getToken() {
+    return localStorage.getItem("token");
+}
+
+function getCurrentUser() {
+    const user = localStorage.getItem("user");
+
+    if (!user) {
+        return null;
+    }
+
+    try {
+        return JSON.parse(user);
+    } catch (error) {
+        return null;
+    }
+}
+
+function saveLoginData(data) {
+    localStorage.setItem("token", data.token);
+    localStorage.setItem("user", JSON.stringify(data.user));
+}
+
+function logout() {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    localStorage.removeItem("loggedIn");
+
+    window.location.href = "login.html";
+}
+
+async function apiRequest(url, options = {}) {
+
+    const headers = {
+        "Content-Type": "application/json",
+        ...(options.headers || {})
+    };
+
+    const token = getToken();
+
+    if (token) {
+        headers.Authorization = `Bearer ${token}`;
+    }
+
+    const response = await fetch(
+        `${API_URL}${url}`,
+        {
+            ...options,
+            headers: headers
+        }
+    );
+
+    let data = {};
+
+    try {
+        data = await response.json();
+    } catch (error) {
+        data = {};
+    }
+
+    if (!response.ok) {
+
+        throw new Error(
+            data.message || "Something went wrong."
+        );
+
+    }
+
+    return data;
+}
 
 // ==========================================
 // REGISTER
 // ==========================================
 
-const registerForm = document.getElementById("registerForm");
+const registerForm =
+    document.getElementById("registerForm");
 
 if (registerForm) {
 
-    registerForm.addEventListener("submit", function (event) {
+    registerForm.addEventListener(
+        "submit",
+        async function (event) {
 
-        event.preventDefault();
+            event.preventDefault();
 
-        const name = document.getElementById("name").value.trim();
-        const email = document.getElementById("email").value.trim();
-        const password = document.getElementById("password").value;
-        const confirmPassword =
-            document.getElementById("confirmPassword").value;
+            const name =
+                document.getElementById("name")
+                    .value
+                    .trim();
 
-        if (password !== confirmPassword) {
-            alert("Passwords do not match!");
-            return;
+            const email =
+                document.getElementById("email")
+                    .value
+                    .trim();
+
+            const password =
+                document.getElementById("password")
+                    .value;
+
+            const confirmPassword =
+                document.getElementById("confirmPassword")
+                    .value;
+
+            if (password !== confirmPassword) {
+
+                alert("Passwords do not match!");
+
+                return;
+            }
+
+            try {
+
+                const data = await apiRequest(
+                    "/register",
+                    {
+                        method: "POST",
+
+                        body: JSON.stringify({
+                            name: name,
+                            email: email,
+                            password: password
+                        })
+                    }
+                );
+
+                alert(data.message);
+
+                window.location.href =
+                    "login.html";
+
+            } catch (error) {
+
+                alert(error.message);
+
+            }
+
         }
-
-        const user = {
-            name: name,
-            email: email,
-            password: password
-        };
-
-        localStorage.setItem("user", JSON.stringify(user));
-
-        alert("Registration successful!");
-
-        window.location.href = "login.html";
-    });
+    );
 }
-
 
 // ==========================================
 // LOGIN
 // ==========================================
 
-const loginForm = document.getElementById("loginForm");
+const loginForm =
+    document.getElementById("loginForm");
 
 if (loginForm) {
 
-    loginForm.addEventListener("submit", function (event) {
+    loginForm.addEventListener(
+        "submit",
+        async function (event) {
 
-        event.preventDefault();
+            event.preventDefault();
 
-        const email =
-            document.getElementById("loginEmail").value.trim();
+            const email =
+                document.getElementById("loginEmail")
+                    .value
+                    .trim();
 
-        const password =
-            document.getElementById("loginPassword").value;
+            const password =
+                document.getElementById("loginPassword")
+                    .value;
 
-        const savedUser =
-            JSON.parse(localStorage.getItem("user"));
+            try {
 
-        if (!savedUser) {
-            alert("No account found. Please register first.");
-            return;
-        }
+                const data = await apiRequest(
+                    "/login",
+                    {
+                        method: "POST",
 
-        if (
-            email === savedUser.email &&
-            password === savedUser.password
-        ) {
+                        body: JSON.stringify({
+                            email: email,
+                            password: password
+                        })
+                    }
+                );
 
-            localStorage.setItem("loggedIn", "true");
+                saveLoginData(data);
 
-            alert("Login successful!");
+                alert(data.message);
 
-            window.location.href = "dashboard.html";
+                window.location.href =
+                    "dashboard.html";
 
-        } else {
+            } catch (error) {
 
-            alert("Invalid email or password!");
+                alert(error.message);
 
-        }
-    });
-}
-
-
-// ==========================================
-// CREATE / EDIT BLOG
-// ==========================================
-
-const blogForm = document.getElementById("blogForm");
-
-if (blogForm) {
-
-    const titleInput =
-        document.getElementById("blogTitle");
-
-    const contentInput =
-        document.getElementById("blogContent");
-
-    const formTitle =
-        document.getElementById("blogFormTitle");
-
-    const formDescription =
-        document.getElementById("blogFormDescription");
-
-    const submitButton =
-        document.getElementById("blogSubmitButton");
-
-
-    // Check if we are editing a blog
-    const urlParams =
-        new URLSearchParams(window.location.search);
-
-    const editId =
-        urlParams.get("edit");
-
-
-    // ======================================
-    // EDIT MODE
-    // ======================================
-
-    if (editId) {
-
-        let blogs =
-            JSON.parse(localStorage.getItem("blogs")) || [];
-
-        const blog =
-            blogs.find(function (item) {
-
-                return String(item.id) === String(editId);
-
-            });
-
-
-        if (blog) {
-
-            // Put existing information into form
-            titleInput.value = blog.title;
-
-            contentInput.value = blog.content;
-
-            formTitle.textContent =
-                "Edit Blog";
-
-            formDescription.textContent =
-                "Update your blog and save the changes.";
-
-            submitButton.textContent =
-                "Update Blog";
-
-        } else {
-
-            alert("Blog not found!");
-
-            window.location.href =
-                "dashboard.html";
-        }
-    }
-
-
-    // ======================================
-    // FORM SUBMIT
-    // ======================================
-
-    blogForm.addEventListener("submit", function (event) {
-
-        event.preventDefault();
-
-        const title =
-            titleInput.value.trim();
-
-        const content =
-            contentInput.value.trim();
-
-
-        if (title === "" || content === "") {
-
-            alert(
-                "Please enter both a title and blog content."
-            );
-
-            return;
-        }
-
-
-        let blogs =
-            JSON.parse(localStorage.getItem("blogs")) || [];
-
-
-        // ==================================
-        // UPDATE EXISTING BLOG
-        // ==================================
-
-        if (editId) {
-
-            const blog =
-                blogs.find(function (item) {
-
-                    return String(item.id) === String(editId);
-
-                });
-
-
-            if (!blog) {
-
-                alert("Blog not found!");
-
-                return;
             }
 
-
-            blog.title = title;
-
-            blog.content = content;
-
-
-            localStorage.setItem(
-                "blogs",
-                JSON.stringify(blogs)
-            );
-
-
-            alert("Blog updated successfully!");
-
-            window.location.href =
-                "dashboard.html";
-
-            return;
         }
-
-
-        // ==================================
-        // CREATE NEW BLOG
-        // ==================================
-
-        const newBlog = {
-
-            id: Date.now(),
-
-            title: title,
-
-            content: content
-
-        };
-
-
-        blogs.push(newBlog);
-
-
-        localStorage.setItem(
-            "blogs",
-            JSON.stringify(blogs)
-        );
-
-
-        alert("Blog published successfully!");
-
-        window.location.href =
-            "dashboard.html";
-    });
-}
-
-
-// ==========================================
-// DISPLAY BLOGS
-// ==========================================
-
-const blogList =
-    document.getElementById("blogList");
-
-
-if (blogList) {
-
-    const blogs =
-        JSON.parse(localStorage.getItem("blogs")) || [];
-
-
-    blogList.innerHTML = "";
-
-
-    if (blogs.length === 0) {
-
-        blogList.innerHTML = `
-            <p class="no-blogs">
-                No blogs yet. Create your first blog!
-            </p>
-        `;
-
-    } else {
-
-        blogs.forEach(function (blog) {
-
-            const blogCard =
-                document.createElement("article");
-
-            blogCard.className =
-                "blog-card";
-
-
-            blogCard.innerHTML = `
-
-                <h3>${blog.title}</h3>
-
-                <p>${blog.content}</p>
-
-                <button
-                    type="button"
-                    class="edit-btn">
-                    Edit
-                </button>
-
-                <button
-                    type="button"
-                    class="delete-btn">
-                    Delete
-                </button>
-
-            `;
-
-
-            blogList.appendChild(blogCard);
-
-
-            // ==================================
-            // EDIT BUTTON
-            // ==================================
-
-            const editButton =
-                blogCard.querySelector(".edit-btn");
-
-
-            editButton.addEventListener(
-                "click",
-                function () {
-
-                    window.location.href =
-                        "create-blog.html?edit=" + blog.id;
-
-                }
-            );
-
-
-            // ==================================
-            // DELETE BUTTON
-            // ==================================
-
-            const deleteButton =
-                blogCard.querySelector(".delete-btn");
-
-
-            deleteButton.addEventListener(
-                "click",
-                function () {
-
-                    deleteBlog(blog.id);
-
-                }
-            );
-
-        });
-    }
-}
-
-
-// ==========================================
-// DELETE BLOG
-// ==========================================
-
-function deleteBlog(id) {
-
-    const confirmDelete =
-        window.confirm(
-            "Are you sure you want to delete this blog?"
-        );
-
-
-    // Cancel or X
-    if (!confirmDelete) {
-        return;
-    }
-
-
-    let blogs =
-        JSON.parse(localStorage.getItem("blogs")) || [];
-
-
-    blogs =
-        blogs.filter(function (blog) {
-
-            return String(blog.id) !== String(id);
-
-        });
-
-
-    localStorage.setItem(
-        "blogs",
-        JSON.stringify(blogs)
     );
-
-
-    alert("Blog deleted successfully!");
-
-    window.location.reload();
 }
+
 // ==========================================
 // LOGOUT
 // ==========================================
@@ -415,19 +214,434 @@ const logoutLink =
 
 if (logoutLink) {
 
-    logoutLink.addEventListener("click", function (event) {
+    logoutLink.addEventListener(
+        "click",
+        function (event) {
 
-        event.preventDefault();
+            event.preventDefault();
 
-        localStorage.removeItem("loggedIn");
+            logout();
 
-        alert("You have been logged out.");
-
-        window.location.href = "login.html";
-    });
+        }
+    );
 }
+
 // ==========================================
-// READ MORE / BLOG DETAILS
+// PROTECT LOGIN-ONLY PAGES
+// ==========================================
+
+const currentPage =
+    window.location.pathname
+        .split("/")
+        .pop();
+
+const protectedPages = [
+    "dashboard.html",
+    "create-blog.html"
+];
+
+if (
+    protectedPages.includes(currentPage) &&
+    !getToken()
+) {
+
+    alert("Please login first.");
+
+    window.location.href =
+        "login.html";
+}
+
+// ==========================================
+// CREATE BLOG
+// ==========================================
+
+const blogForm =
+    document.getElementById("blogForm");
+
+if (blogForm) {
+
+    blogForm.addEventListener(
+        "submit",
+        async function (event) {
+
+            event.preventDefault();
+
+            const title =
+                document.getElementById("blogTitle")
+                    .value
+                    .trim();
+
+            const content =
+                document.getElementById("blogContent")
+                    .value
+                    .trim();
+
+            if (!title || !content) {
+
+                alert(
+                    "Please enter both title and content."
+                );
+
+                return;
+            }
+
+            try {
+
+                const data = await apiRequest(
+                    "/blogs",
+                    {
+                        method: "POST",
+
+                        body: JSON.stringify({
+                            title: title,
+                            content: content
+                        })
+                    }
+                );
+
+                alert(data.message);
+
+                window.location.href =
+                    "dashboard.html";
+
+            } catch (error) {
+
+                alert(error.message);
+
+            }
+
+        }
+    );
+}
+
+// ==========================================
+// DISPLAY DASHBOARD BLOGS
+// ==========================================
+
+const blogList =
+    document.getElementById("blogList");
+
+if (blogList) {
+
+    loadDashboardBlogs();
+
+}
+
+async function loadDashboardBlogs() {
+
+    try {
+
+        const blogs =
+            await apiRequest("/blogs");
+
+        const currentUser =
+            getCurrentUser();
+
+        blogList.innerHTML = "";
+
+        const myBlogs = blogs.filter(
+            function (blog) {
+
+                return (
+                    currentUser &&
+                    blog.authorId === currentUser.id
+                );
+
+            }
+        );
+
+        if (myBlogs.length === 0) {
+
+            blogList.innerHTML = `
+                <p>No blogs yet. Create your first blog!</p>
+            `;
+
+            return;
+        }
+
+        myBlogs.forEach(
+            function (blog) {
+
+                const blogCard =
+                    document.createElement("article");
+
+                blogCard.className =
+                    "blog-card";
+
+                blogCard.innerHTML = `
+                    <h3>${escapeHTML(blog.title)}</h3>
+
+                    <p>
+                        ${escapeHTML(blog.content)}
+                    </p>
+
+                    <button
+                        class="edit-btn"
+                        data-id="${blog.id}"
+                    >
+                        Edit
+                    </button>
+
+                    <button
+                        class="delete-btn"
+                        data-id="${blog.id}"
+                    >
+                        Delete
+                    </button>
+                `;
+
+                blogList.appendChild(blogCard);
+
+                const editButton =
+                    blogCard.querySelector(
+                        ".edit-btn"
+                    );
+
+                editButton.addEventListener(
+                    "click",
+                    function () {
+
+                        editBlog(blog);
+
+                    }
+                );
+
+                const deleteButton =
+                    blogCard.querySelector(
+                        ".delete-btn"
+                    );
+
+                deleteButton.addEventListener(
+                    "click",
+                    function () {
+
+                        deleteBlog(blog.id);
+
+                    }
+                );
+
+            }
+        );
+
+    } catch (error) {
+
+        console.error(error);
+
+        blogList.innerHTML = `
+            <p>Unable to load blogs.</p>
+        `;
+
+    }
+}
+
+// ==========================================
+// EDIT BLOG
+// ==========================================
+
+async function editBlog(blog) {
+
+    const newTitle =
+        prompt(
+            "Enter new blog title:",
+            blog.title
+        );
+
+    // Cancel or close = do nothing
+    if (newTitle === null) {
+        return;
+    }
+
+    const trimmedTitle =
+        newTitle.trim();
+
+    if (!trimmedTitle) {
+
+        alert(
+            "Blog title cannot be empty."
+        );
+
+        return;
+    }
+
+    const newContent =
+        prompt(
+            "Enter new blog content:",
+            blog.content
+        );
+
+    // Cancel or close = do nothing
+    if (newContent === null) {
+        return;
+    }
+
+    const trimmedContent =
+        newContent.trim();
+
+    if (!trimmedContent) {
+
+        alert(
+            "Blog content cannot be empty."
+        );
+
+        return;
+    }
+
+    try {
+
+        const data =
+            await apiRequest(
+                `/blogs/${blog.id}`,
+                {
+                    method: "PUT",
+
+                    body: JSON.stringify({
+                        title: trimmedTitle,
+                        content: trimmedContent
+                    })
+                }
+            );
+
+        alert(data.message);
+
+        await loadDashboardBlogs();
+
+    } catch (error) {
+
+        alert(error.message);
+
+    }
+}
+
+// ==========================================
+// DELETE BLOG
+// ==========================================
+
+async function deleteBlog(id) {
+
+    const confirmDelete =
+        confirm(
+            "Are you sure you want to delete this blog?"
+        );
+
+    // Cancel or close popup = DO NOT DELETE
+    if (!confirmDelete) {
+        return;
+    }
+
+    try {
+
+        const data =
+            await apiRequest(
+                `/blogs/${id}`,
+                {
+                    method: "DELETE"
+                }
+            );
+
+        alert(data.message);
+
+        await loadDashboardBlogs();
+
+    } catch (error) {
+
+        alert(error.message);
+
+    }
+}
+
+// ==========================================
+// HOME PAGE BLOGS
+// ==========================================
+
+async function loadHomeBlogs() {
+
+    const homeBlogContainer =
+        document.querySelector(
+            ".blog-container"
+        );
+
+    if (!homeBlogContainer) {
+        return;
+    }
+
+    try {
+
+        const blogs =
+            await apiRequest("/blogs");
+
+        homeBlogContainer.innerHTML = "";
+
+        if (blogs.length === 0) {
+
+            homeBlogContainer.innerHTML = `
+                <p>No blogs available yet.</p>
+            `;
+
+            return;
+        }
+
+        // Show newest blogs first
+        const latestBlogs =
+            [...blogs]
+                .sort(
+                    (a, b) =>
+                        new Date(b.createdAt) -
+                        new Date(a.createdAt)
+                )
+                .slice(0, 6);
+
+        latestBlogs.forEach(
+            function (blog) {
+
+                const card =
+                    document.createElement("article");
+
+                card.className =
+                    "blog-card";
+
+                const shortContent =
+                    blog.content.length > 150
+                        ? blog.content.substring(0, 150) + "..."
+                        : blog.content;
+
+                card.innerHTML = `
+                    <h3>
+                        ${escapeHTML(blog.title)}
+                    </h3>
+
+                    <p>
+                        ${escapeHTML(shortContent)}
+                    </p>
+
+                    <a
+                        href="blog-details.html?blog=${blog.id}"
+                        class="btn"
+                    >
+                        Read More
+                    </a>
+                `;
+
+                homeBlogContainer.appendChild(card);
+
+            }
+        );
+
+    } catch (error) {
+
+        console.error(error);
+
+        homeBlogContainer.innerHTML = `
+            <p>Unable to load blogs.</p>
+        `;
+
+    }
+}
+
+// Run Home page blog loading
+loadHomeBlogs();
+
+// ==========================================
+// BLOG DETAILS PAGE
 // ==========================================
 
 const detailsTitle =
@@ -438,54 +652,67 @@ const detailsContent =
 
 if (detailsTitle && detailsContent) {
 
-    const urlParams =
-        new URLSearchParams(window.location.search);
+    loadBlogDetails();
 
-    const blogNumber =
-        urlParams.get("blog");
+}
 
-    const sampleBlogs = {
+async function loadBlogDetails() {
 
-        "1": {
-            title: "Getting Started with Web Development",
-            content:
-                "Web development is the process of creating websites and web applications. HTML is used to create the structure of a webpage, CSS is used to design it, and JavaScript adds interactive functionality."
-        },
+    const params =
+        new URLSearchParams(
+            window.location.search
+        );
 
-        "2": {
-            title: "Why Learn JavaScript?",
-            content:
-                "JavaScript is one of the most important technologies for modern web development. It allows developers to create interactive websites, handle user actions, modify webpage content and build dynamic applications."
-        },
+    const blogId =
+        params.get("blog");
 
-        "3": {
-            title: "Tips for Better Web Design",
-            content:
-                "Good web design should be simple, responsive and easy to use. Use clear navigation, readable text, appropriate spacing and responsive layouts so your website works well on different screen sizes."
-        }
-
-    };
-
-
-    const selectedBlog =
-        sampleBlogs[blogNumber];
-
-
-    if (selectedBlog) {
-
-        detailsTitle.textContent =
-            selectedBlog.title;
-
-        detailsContent.textContent =
-            selectedBlog.content;
-
-    } else {
+    if (!blogId) {
 
         detailsTitle.textContent =
             "Blog Not Found";
 
         detailsContent.textContent =
-            "Sorry, this blog could not be found.";
+            "No blog was selected.";
+
+        return;
+    }
+
+    try {
+
+        const blog =
+            await apiRequest(
+                `/blogs/${blogId}`
+            );
+
+        detailsTitle.textContent =
+            blog.title;
+
+        detailsContent.textContent =
+            blog.content;
+
+    } catch (error) {
+
+        detailsTitle.textContent =
+            "Blog Not Found";
+
+        detailsContent.textContent =
+            error.message;
 
     }
+}
+
+// ==========================================
+// ESCAPE HTML
+// Prevent HTML injection in blog previews
+// ==========================================
+
+function escapeHTML(text) {
+
+    const div =
+        document.createElement("div");
+
+    div.textContent =
+        text;
+
+    return div.innerHTML;
 }
