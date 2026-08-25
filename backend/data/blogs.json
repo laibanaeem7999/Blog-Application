@@ -7,5 +7,23 @@
     "authorId": 1787240771228,
     "createdAt": "2026-08-20T15:48:31.147Z",
     "updatedAt": "2026-08-20T16:13:13.135Z"
+  },
+  {
+    "id": 1787336450993,
+    "title": "|Module 2 completed: Full stack Integration.",
+    "content": "Successfully connected my frontend user interface to the backend API.",
+    "author": "Amina",
+    "authorId": 1787336099660,
+    "createdAt": "2026-08-21T18:20:50.993Z",
+    "updatedAt": "2026-08-21T18:24:21.714Z"
+  },
+  {
+    "id": 1787338486366,
+    "title": "Node.js & Express API Test",
+    "content": "Verifying user authentication and dynamic blog CRUD operations across all backend routes",
+    "author": "Saad",
+    "authorId": 1787338061838,
+    "createdAt": "2026-08-21T18:54:46.366Z",
+    "updatedAt": "2026-08-21T18:55:05.814Z"
   }
 ]

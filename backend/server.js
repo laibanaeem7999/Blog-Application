@@ -1,106 +1,70 @@
 // ==========================================
 // BLOG APPLICATION BACKEND SERVER
+// MongoDB Version
 // ==========================================
+
+require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const fs = require("fs");
-const path = require("path");
+const { MongoClient, ObjectId } = require("mongodb");
 
 // ==========================================
 // APP SETUP
 // ==========================================
 
 const app = express();
-const PORT = 5000;
 
-const JWT_SECRET = "blog_application_secret_key";
+const PORT = process.env.PORT || 5000;
 
-// ==========================================
-// FILE PATHS
-// ==========================================
+const JWT_SECRET =
+    process.env.JWT_SECRET || "blog_application_secret_key";
 
-const dataFolder = path.join(__dirname, "data");
-
-const usersFile = path.join(dataFolder, "users.json");
-const blogsFile = path.join(dataFolder, "blogs.json");
+const MONGODB_URI = process.env.MONGODB_URI;
 
 // ==========================================
-// CREATE DATA FOLDER AND FILES IF MISSING
+// CHECK MONGODB CONNECTION STRING
 // ==========================================
 
-if (!fs.existsSync(dataFolder)) {
-    fs.mkdirSync(dataFolder, { recursive: true });
+if (!MONGODB_URI) {
+
+    console.error(
+        "ERROR: MONGODB_URI is missing from .env"
+    );
+
+    process.exit(1);
 }
 
-if (!fs.existsSync(usersFile)) {
-    fs.writeFileSync(usersFile, "[]");
-}
+// ==========================================
+// MONGODB
+// ==========================================
 
-if (!fs.existsSync(blogsFile)) {
-    fs.writeFileSync(blogsFile, "[]");
-}
+const client = new MongoClient(MONGODB_URI);
+
+let db;
+let usersCollection;
+let blogsCollection;
 
 // ==========================================
 // MIDDLEWARE
 // ==========================================
 
 app.use(cors());
+
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
-// Serve frontend files from main Blog_Application folder
-app.use(express.static(path.join(__dirname, "..")));
+app.use(express.urlencoded({
+    extended: true
+}));
 
-// ==========================================
-// HELPER FUNCTIONS
-// ==========================================
-
-function readUsers() {
-    try {
-        const data = fs.readFileSync(usersFile, "utf8");
-
-        if (!data.trim()) {
-            return [];
-        }
-
-        return JSON.parse(data);
-    } catch (error) {
-        console.error("Error reading users:", error);
-        return [];
-    }
-}
-
-function saveUsers(users) {
-    fs.writeFileSync(
-        usersFile,
-        JSON.stringify(users, null, 2)
-    );
-}
-
-function readBlogs() {
-    try {
-        const data = fs.readFileSync(blogsFile, "utf8");
-
-        if (!data.trim()) {
-            return [];
-        }
-
-        return JSON.parse(data);
-    } catch (error) {
-        console.error("Error reading blogs:", error);
-        return [];
-    }
-}
-
-function saveBlogs(blogs) {
-    fs.writeFileSync(
-        blogsFile,
-        JSON.stringify(blogs, null, 2)
-    );
-}
+// Serve frontend files
+app.use(
+    express.static(
+        require("path").join(__dirname, "..")
+    )
+);
 
 // ==========================================
 // AUTHENTICATION MIDDLEWARE
@@ -108,28 +72,36 @@ function saveBlogs(blogs) {
 
 function authenticateToken(req, res, next) {
 
-    const authHeader = req.headers.authorization;
+    const authHeader =
+        req.headers.authorization;
 
     if (!authHeader) {
+
         return res.status(401).json({
-            message: "Access denied. Please login."
+            message:
+                "Access denied. Please login."
         });
+
     }
 
-    const token = authHeader.split(" ")[1];
+    const token =
+        authHeader.split(" ")[1];
 
     if (!token) {
+
         return res.status(401).json({
             message: "Token missing."
         });
+
     }
 
     try {
 
-        const decoded = jwt.verify(
-            token,
-            JWT_SECRET
-        );
+        const decoded =
+            jwt.verify(
+                token,
+                JWT_SECRET
+            );
 
         req.user = decoded;
 
@@ -138,8 +110,10 @@ function authenticateToken(req, res, next) {
     } catch (error) {
 
         return res.status(403).json({
-            message: "Invalid or expired token."
+            message:
+                "Invalid or expired token."
         });
+
     }
 }
 
@@ -150,7 +124,8 @@ function authenticateToken(req, res, next) {
 app.get("/api", (req, res) => {
 
     res.json({
-        message: "Blog Application Backend is running successfully!"
+        message:
+            "Blog Application Backend is running successfully!"
     });
 
 });
@@ -159,252 +134,384 @@ app.get("/api", (req, res) => {
 // REGISTER USER
 // ==========================================
 
-app.post("/api/register", async (req, res) => {
+app.post(
+    "/api/register",
+    async (req, res) => {
 
-    try {
+        try {
 
-        const {
-            name,
-            email,
-            password
-        } = req.body;
+            const {
+                name,
+                email,
+                password
+            } = req.body;
 
-        // Check required fields
-        if (!name || !email || !password) {
+            // Validate fields
+            if (
+                !name ||
+                !email ||
+                !password
+            ) {
 
-            return res.status(400).json({
-                message: "Please fill all fields."
-            });
-
-        }
-
-        const users = readUsers();
-
-        // Check existing email
-        const existingUser = users.find(
-            user =>
-                user.email.toLowerCase() ===
-                email.toLowerCase()
-        );
-
-        if (existingUser) {
-
-            return res.status(400).json({
-                message: "Email already registered."
-            });
-
-        }
-
-        // Hash password
-        const hashedPassword =
-            await bcrypt.hash(password, 10);
-
-        const newUser = {
-
-            id: Date.now(),
-
-            name: name.trim(),
-
-            email: email.trim().toLowerCase(),
-
-            password: hashedPassword
-
-        };
-
-        users.push(newUser);
-
-        saveUsers(users);
-
-        res.status(201).json({
-
-            message: "Registration successful.",
-
-            user: {
-
-                id: newUser.id,
-
-                name: newUser.name,
-
-                email: newUser.email
+                return res.status(400).json({
+                    message:
+                        "Please fill all fields."
+                });
 
             }
 
-        });
+            const cleanName =
+                name.trim();
 
-    } catch (error) {
+            const cleanEmail =
+                email.trim().toLowerCase();
 
-        console.error(error);
+            // Check existing user
+            const existingUser =
+                await usersCollection.findOne({
+                    email: cleanEmail
+                });
 
-        res.status(500).json({
-            message: "Server error during registration."
-        });
+            if (existingUser) {
+
+                return res.status(400).json({
+                    message:
+                        "Email already registered."
+                });
+
+            }
+
+            // Hash password
+            const hashedPassword =
+                await bcrypt.hash(
+                    password,
+                    10
+                );
+
+            // Create user
+            const newUser = {
+
+                name: cleanName,
+
+                email: cleanEmail,
+
+                password: hashedPassword,
+
+                createdAt:
+                    new Date()
+
+            };
+
+            const result =
+                await usersCollection.insertOne(
+                    newUser
+                );
+
+            res.status(201).json({
+
+                message:
+                    "Registration successful.",
+
+                user: {
+
+                    id:
+                        result.insertedId.toString(),
+
+                    name:
+                        newUser.name,
+
+                    email:
+                        newUser.email
+
+                }
+
+            });
+
+        } catch (error) {
+
+            console.error(
+                "Registration error:",
+                error
+            );
+
+            res.status(500).json({
+                message:
+                    "Server error during registration."
+            });
+
+        }
 
     }
-
-});
+);
 
 // ==========================================
 // LOGIN USER
 // ==========================================
 
-app.post("/api/login", async (req, res) => {
+app.post(
+    "/api/login",
+    async (req, res) => {
 
-    try {
+        try {
 
-        const {
-            email,
-            password
-        } = req.body;
+            const {
+                email,
+                password
+            } = req.body;
 
-        if (!email || !password) {
+            if (
+                !email ||
+                !password
+            ) {
 
-            return res.status(400).json({
-                message: "Please enter email and password."
+                return res.status(400).json({
+                    message:
+                        "Please enter email and password."
+                });
+
+            }
+
+            const cleanEmail =
+                email.trim().toLowerCase();
+
+            // Find user
+            const user =
+                await usersCollection.findOne({
+                    email: cleanEmail
+                });
+
+            if (!user) {
+
+                return res.status(401).json({
+                    message:
+                        "Invalid email or password."
+                });
+
+            }
+
+            // Check password
+            const passwordMatch =
+                await bcrypt.compare(
+                    password,
+                    user.password
+                );
+
+            if (!passwordMatch) {
+
+                return res.status(401).json({
+                    message:
+                        "Invalid email or password."
+                });
+
+            }
+
+            // Create JWT
+            const token =
+                jwt.sign(
+
+                    {
+                        id:
+                            user._id.toString(),
+
+                        name:
+                            user.name,
+
+                        email:
+                            user.email
+                    },
+
+                    JWT_SECRET,
+
+                    {
+                        expiresIn: "7d"
+                    }
+
+                );
+
+            res.json({
+
+                message:
+                    "Login successful.",
+
+                token: token,
+
+                user: {
+
+                    id:
+                        user._id.toString(),
+
+                    name:
+                        user.name,
+
+                    email:
+                        user.email
+
+                }
+
             });
 
-        }
+        } catch (error) {
 
-        const users = readUsers();
-
-        const user = users.find(
-            user =>
-                user.email.toLowerCase() ===
-                email.toLowerCase()
-        );
-
-        if (!user) {
-
-            return res.status(401).json({
-                message: "Invalid email or password."
-            });
-
-        }
-
-        const passwordMatch =
-            await bcrypt.compare(
-                password,
-                user.password
+            console.error(
+                "Login error:",
+                error
             );
 
-        if (!passwordMatch) {
-
-            return res.status(401).json({
-                message: "Invalid email or password."
+            res.status(500).json({
+                message:
+                    "Server error during login."
             });
 
         }
 
-        // Create JWT token
-        const token = jwt.sign(
-
-            {
-                id: user.id,
-
-                name: user.name,
-
-                email: user.email
-
-            },
-
-            JWT_SECRET,
-
-            {
-                expiresIn: "7d"
-            }
-
-        );
-
-        res.json({
-
-            message: "Login successful.",
-
-            token: token,
-
-            user: {
-
-                id: user.id,
-
-                name: user.name,
-
-                email: user.email
-
-            }
-
-        });
-
-    } catch (error) {
-
-        console.error(error);
-
-        res.status(500).json({
-            message: "Server error during login."
-        });
-
     }
-
-});
+);
 
 // ==========================================
 // GET ALL BLOGS
 // ==========================================
 
-app.get("/api/blogs", (req, res) => {
+app.get(
+    "/api/blogs",
+    async (req, res) => {
 
-    try {
+        try {
 
-        const blogs = readBlogs();
+            const blogs =
+                await blogsCollection
+                    .find({})
+                    .sort({
+                        createdAt: -1
+                    })
+                    .toArray();
 
-        res.json(blogs);
+            const formattedBlogs =
+                blogs.map(blog => ({
 
-    } catch (error) {
+                    id:
+                        blog._id.toString(),
 
-        console.error(error);
+                    title:
+                        blog.title,
 
-        res.status(500).json({
-            message: "Unable to get blogs."
-        });
+                    content:
+                        blog.content,
+
+                    author:
+                        blog.author,
+
+                    authorId:
+                        blog.authorId,
+
+                    createdAt:
+                        blog.createdAt,
+
+                    updatedAt:
+                        blog.updatedAt
+
+                }));
+
+            res.json(
+                formattedBlogs
+            );
+
+        } catch (error) {
+
+            console.error(
+                "Get blogs error:",
+                error
+            );
+
+            res.status(500).json({
+                message:
+                    "Unable to get blogs."
+            });
+
+        }
 
     }
-
-});
+);
 
 // ==========================================
 // GET SINGLE BLOG
 // ==========================================
 
-app.get("/api/blogs/:id", (req, res) => {
+app.get(
+    "/api/blogs/:id",
+    async (req, res) => {
 
-    try {
+        try {
 
-        const blogs = readBlogs();
+            const id =
+                req.params.id;
 
-        const id = Number(req.params.id);
+            if (
+                !ObjectId.isValid(id)
+            ) {
 
-        const blog = blogs.find(
-            blog => blog.id === id
-        );
+                return res.status(400).json({
+                    message:
+                        "Invalid blog ID."
+                });
 
-        if (!blog) {
+            }
 
-            return res.status(404).json({
-                message: "Blog not found."
+            const blog =
+                await blogsCollection.findOne({
+                    _id:
+                        new ObjectId(id)
+                });
+
+            if (!blog) {
+
+                return res.status(404).json({
+                    message:
+                        "Blog not found."
+                });
+
+            }
+
+            res.json({
+
+                id:
+                    blog._id.toString(),
+
+                title:
+                    blog.title,
+
+                content:
+                    blog.content,
+
+                author:
+                    blog.author,
+
+                authorId:
+                    blog.authorId,
+
+                createdAt:
+                    blog.createdAt,
+
+                updatedAt:
+                    blog.updatedAt
+
+            });
+
+        } catch (error) {
+
+            console.error(
+                "Get single blog error:",
+                error
+            );
+
+            res.status(500).json({
+                message:
+                    "Unable to get blog."
             });
 
         }
 
-        res.json(blog);
-
-    } catch (error) {
-
-        console.error(error);
-
-        res.status(500).json({
-            message: "Unable to get blog."
-        });
-
     }
-
-});
+);
 
 // ==========================================
 // CREATE BLOG
@@ -413,7 +520,7 @@ app.get("/api/blogs/:id", (req, res) => {
 app.post(
     "/api/blogs",
     authenticateToken,
-    (req, res) => {
+    async (req, res) => {
 
         try {
 
@@ -422,54 +529,87 @@ app.post(
                 content
             } = req.body;
 
-            if (!title || !content) {
+            if (
+                !title ||
+                !content
+            ) {
 
                 return res.status(400).json({
-                    message: "Title and content are required."
+                    message:
+                        "Title and content are required."
                 });
 
             }
 
-            const blogs = readBlogs();
-
             const newBlog = {
 
-                id: Date.now(),
+                title:
+                    title.trim(),
 
-                title: title.trim(),
+                content:
+                    content.trim(),
 
-                content: content.trim(),
+                author:
+                    req.user.name,
 
-                author: req.user.name,
-
-                authorId: req.user.id,
+                authorId:
+                    req.user.id,
 
                 createdAt:
-                    new Date().toISOString(),
+                    new Date(),
 
                 updatedAt:
-                    new Date().toISOString()
+                    new Date()
 
             };
 
-            blogs.push(newBlog);
-
-            saveBlogs(blogs);
+            const result =
+                await blogsCollection.insertOne(
+                    newBlog
+                );
 
             res.status(201).json({
 
-                message: "Blog created successfully.",
+                message:
+                    "Blog created successfully.",
 
-                blog: newBlog
+                blog: {
+
+                    id:
+                        result.insertedId.toString(),
+
+                    title:
+                        newBlog.title,
+
+                    content:
+                        newBlog.content,
+
+                    author:
+                        newBlog.author,
+
+                    authorId:
+                        newBlog.authorId,
+
+                    createdAt:
+                        newBlog.createdAt,
+
+                    updatedAt:
+                        newBlog.updatedAt
+
+                }
 
             });
 
         } catch (error) {
 
-            console.error(error);
+            console.error(
+                "Create blog error:",
+                error
+            );
 
             res.status(500).json({
-                message: "Unable to create blog."
+                message:
+                    "Unable to create blog."
             });
 
         }
@@ -484,44 +624,61 @@ app.post(
 app.put(
     "/api/blogs/:id",
     authenticateToken,
-    (req, res) => {
+    async (req, res) => {
 
         try {
 
-            const blogs = readBlogs();
+            const id =
+                req.params.id;
 
-            const id = Number(req.params.id);
+            if (
+                !ObjectId.isValid(id)
+            ) {
 
-            const blogIndex = blogs.findIndex(
-                blog => blog.id === id
-            );
-
-            if (blogIndex === -1) {
-
-                return res.status(404).json({
-                    message: "Blog not found."
+                return res.status(400).json({
+                    message:
+                        "Invalid blog ID."
                 });
 
             }
 
-            const blog = blogs[blogIndex];
+            const blog =
+                await blogsCollection.findOne({
+                    _id:
+                        new ObjectId(id)
+                });
 
-          // Only the owner can edit
-if (Number(blog.authorId) !== Number(req.user.id)) {
+            if (!blog) {
 
-    return res.status(403).json({
-        message:
-            "You can only edit your own blog."
-    });
+                return res.status(404).json({
+                    message:
+                        "Blog not found."
+                });
 
-}
+            }
+
+            // Only owner can edit
+            if (
+                String(blog.authorId) !==
+                String(req.user.id)
+            ) {
+
+                return res.status(403).json({
+                    message:
+                        "You can only edit your own blog."
+                });
+
+            }
 
             const {
                 title,
                 content
             } = req.body;
 
-            if (!title || !content) {
+            if (
+                !title ||
+                !content
+            ) {
 
                 return res.status(400).json({
                     message:
@@ -530,32 +687,82 @@ if (Number(blog.authorId) !== Number(req.user.id)) {
 
             }
 
-            blog.title = title.trim();
+            const updatedAt =
+                new Date();
 
-            blog.content = content.trim();
+            await blogsCollection.updateOne(
 
-            blog.updatedAt =
-                new Date().toISOString();
+                {
+                    _id:
+                        new ObjectId(id)
+                },
 
-            blogs[blogIndex] = blog;
+                {
+                    $set: {
 
-            saveBlogs(blogs);
+                        title:
+                            title.trim(),
+
+                        content:
+                            content.trim(),
+
+                        updatedAt:
+                            updatedAt
+
+                    }
+
+                }
+
+            );
+
+            const updatedBlog =
+                await blogsCollection.findOne({
+                    _id:
+                        new ObjectId(id)
+                });
 
             res.json({
 
                 message:
                     "Blog updated successfully.",
 
-                blog: blog
+                blog: {
+
+                    id:
+                        updatedBlog._id.toString(),
+
+                    title:
+                        updatedBlog.title,
+
+                    content:
+                        updatedBlog.content,
+
+                    author:
+                        updatedBlog.author,
+
+                    authorId:
+                        updatedBlog.authorId,
+
+                    createdAt:
+                        updatedBlog.createdAt,
+
+                    updatedAt:
+                        updatedBlog.updatedAt
+
+                }
 
             });
 
         } catch (error) {
 
-            console.error(error);
+            console.error(
+                "Update blog error:",
+                error
+            );
 
             res.status(500).json({
-                message: "Unable to update blog."
+                message:
+                    "Unable to update blog."
             });
 
         }
@@ -570,30 +777,43 @@ if (Number(blog.authorId) !== Number(req.user.id)) {
 app.delete(
     "/api/blogs/:id",
     authenticateToken,
-    (req, res) => {
+    async (req, res) => {
 
         try {
 
-            let blogs = readBlogs();
+            const id =
+                req.params.id;
 
-            const id = Number(req.params.id);
+            if (
+                !ObjectId.isValid(id)
+            ) {
 
-            const blog = blogs.find(
-                blog => blog.id === id
-            );
+                return res.status(400).json({
+                    message:
+                        "Invalid blog ID."
+                });
+
+            }
+
+            const blog =
+                await blogsCollection.findOne({
+                    _id:
+                        new ObjectId(id)
+                });
 
             if (!blog) {
 
                 return res.status(404).json({
-                    message: "Blog not found."
+                    message:
+                        "Blog not found."
                 });
 
             }
 
             // Only owner can delete
             if (
-                blog.authorId &&
-                blog.authorId !== req.user.id
+                String(blog.authorId) !==
+                String(req.user.id)
             ) {
 
                 return res.status(403).json({
@@ -603,11 +823,10 @@ app.delete(
 
             }
 
-            blogs = blogs.filter(
-                blog => blog.id !== id
-            );
-
-            saveBlogs(blogs);
+            await blogsCollection.deleteOne({
+                _id:
+                    new ObjectId(id)
+            });
 
             res.json({
 
@@ -618,10 +837,14 @@ app.delete(
 
         } catch (error) {
 
-            console.error(error);
+            console.error(
+                "Delete blog error:",
+                error
+            );
 
             res.status(500).json({
-                message: "Unable to delete blog."
+                message:
+                    "Unable to delete blog."
             });
 
         }
@@ -630,25 +853,81 @@ app.delete(
 );
 
 // ==========================================
-// START SERVER
+// CONNECT TO MONGODB AND START SERVER
 // ==========================================
 
-app.listen(PORT, () => {
+async function startServer() {
 
-    console.log(
-        "=========================================="
-    );
+    try {
 
-    console.log(
-        "Blog Application Backend Started"
-    );
+        await client.connect();
 
-    console.log(
-        `Server running at http://localhost:${PORT}`
-    );
+        db =
+            client.db("blog_application");
 
-    console.log(
-        "=========================================="
-    );
+        usersCollection =
+            db.collection("users");
 
-});
+        blogsCollection =
+            db.collection("blogs");
+
+        // Create unique email index
+        await usersCollection.createIndex(
+            {
+                email: 1
+            },
+            {
+                unique: true
+            }
+        );
+
+        console.log(
+            "=========================================="
+        );
+
+        console.log(
+            "MongoDB Connected Successfully!"
+        );
+
+        console.log(
+            "Database: blog_application"
+        );
+
+        console.log(
+            "Blog Application Backend Started"
+        );
+
+        console.log(
+            `Server running at http://localhost:${PORT}`
+        );
+
+        console.log(
+            "=========================================="
+        );
+
+        app.listen(
+            PORT,
+            () => {
+                console.log(
+                    `Server is ready on port ${PORT}`
+                );
+            }
+        );
+
+    } catch (error) {
+
+        console.error(
+            "MongoDB connection failed:"
+        );
+
+        console.error(
+            error.message
+        );
+
+        process.exit(1);
+
+    }
+
+}
+
+startServer();
