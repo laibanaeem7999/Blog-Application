@@ -21,7 +21,27 @@ const PORT = process.env.PORT || 5000;
 
 const JWT_SECRET =
     process.env.JWT_SECRET || "blog_application_secret_key";
+function authenticateToken(req, res, next) {
+    const authHeader = req.headers["authorization"];
+    const token = authHeader && authHeader.split(" ")[1];
 
+    if (!token) {
+        return res.status(401).json({
+            message: "Access denied. Please login."
+        });
+    }
+
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+        if (err) {
+            return res.status(403).json({
+                message: "Invalid or expired token."
+            });
+        }
+
+        req.user = user;
+        next();
+    });
+}
 const MONGODB_URI = process.env.MONGODB_URI;
 
 // ==========================================
@@ -373,7 +393,7 @@ app.post(
 
 app.get(
     "/api/blogs",
-    async (req, res) => {
+   authenticateToken, async (req, res) => {
 
         try {
 

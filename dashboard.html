@@ -53,6 +53,12 @@
 
 </script>
     <script src="js/script.js"></script>
+<script>
+    const token = localStorage.getItem("token");
 
+    if (!token) {
+        window.location.href = "login.html";
+    }
+</script>
 </body>
 </html>
