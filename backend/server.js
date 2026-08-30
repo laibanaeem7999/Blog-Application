@@ -925,14 +925,13 @@ async function startServer() {
             "=========================================="
         );
 
-        app.listen(
-            PORT,
-            () => {
-                console.log(
-                    `Server is ready on port ${PORT}`
-                );
-            }
-        );
+        app.listen(PORT, "0.0.0.0", () => {
+    console.log("==========================================");
+    console.log("Blog Application Backend Started");
+    console.log(`Server running at http://localhost:${PORT}`);
+    console.log(`Network access: http://0.0.0.0:${PORT}`);
+    console.log("==========================================");
+});
 
     } catch (error) {
 
