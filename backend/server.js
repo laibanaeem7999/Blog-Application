@@ -1,6 +1,7 @@
 // ==========================================
-// BLOG APPLICATION BACKEND SERVER
-// MongoDB Version
+// BLOG APPLICATION BACKEND
+// Node.js + Express + MongoDB
+// Vercel Serverless Version
 // ==========================================
 
 require("dotenv").config();
@@ -17,55 +18,103 @@ const { MongoClient, ObjectId } = require("mongodb");
 
 const app = express();
 
-const PORT = process.env.PORT || 5000;
+// ==========================================
+// ENVIRONMENT VARIABLES
+// ==========================================
+
+const MONGODB_URI = process.env.MONGODB_URI;
 
 const JWT_SECRET =
     process.env.JWT_SECRET || "blog_application_secret_key";
-function authenticateToken(req, res, next) {
-    const authHeader = req.headers["authorization"];
-    const token = authHeader && authHeader.split(" ")[1];
-
-    if (!token) {
-        return res.status(401).json({
-            message: "Access denied. Please login."
-        });
-    }
-
-    jwt.verify(token, JWT_SECRET, (err, user) => {
-        if (err) {
-            return res.status(403).json({
-                message: "Invalid or expired token."
-            });
-        }
-
-        req.user = user;
-        next();
-    });
-}
-const MONGODB_URI = process.env.MONGODB_URI;
 
 // ==========================================
-// CHECK MONGODB CONNECTION STRING
+// CHECK MONGODB URI
 // ==========================================
 
 if (!MONGODB_URI) {
-
     console.error(
-        "ERROR: MONGODB_URI is missing from .env"
+        "ERROR: MONGODB_URI environment variable is missing."
     );
-
-    process.exit(1);
 }
 
 // ==========================================
-// MONGODB
+// MONGODB CONNECTION
 // ==========================================
 
-const client = new MongoClient(MONGODB_URI);
+const client = new MongoClient(MONGODB_URI || "");
 
-let db;
-let usersCollection;
-let blogsCollection;
+let db = null;
+let usersCollection = null;
+let blogsCollection = null;
+
+let databaseConnection = null;
+
+// ==========================================
+// CONNECT TO DATABASE
+// ==========================================
+
+async function connectDatabase() {
+
+    if (db && usersCollection && blogsCollection) {
+        return;
+    }
+
+    if (!MONGODB_URI) {
+        throw new Error(
+            "MONGODB_URI is not configured in Vercel Environment Variables."
+        );
+    }
+
+    if (!databaseConnection) {
+
+        databaseConnection = client.connect()
+            .then(async () => {
+
+                console.log(
+                    "MongoDB Connected Successfully!"
+                );
+
+                db = client.db("blog_application");
+
+                usersCollection =
+                    db.collection("users");
+
+                blogsCollection =
+                    db.collection("blogs");
+
+                // Create unique email index
+                await usersCollection.createIndex(
+                    {
+                        email: 1
+                    },
+                    {
+                        unique: true
+                    }
+                );
+
+                console.log(
+                    "Database: blog_application"
+                );
+
+            })
+            .catch((error) => {
+
+                databaseConnection = null;
+
+                console.error(
+                    "MongoDB connection failed:"
+                );
+
+                console.error(
+                    error.message
+                );
+
+                throw error;
+            });
+    }
+
+    await databaseConnection;
+}
 
 // ==========================================
 // MIDDLEWARE
@@ -75,15 +124,10 @@ app.use(cors());
 
 app.use(express.json());
 
-app.use(express.urlencoded({
-    extended: true
-}));
-
-// Serve frontend files
 app.use(
-    express.static(
-        require("path").join(__dirname, "..")
-    )
+    express.urlencoded({
+        extended: true
+    })
 );
 
 // ==========================================
@@ -101,7 +145,6 @@ function authenticateToken(req, res, next) {
             message:
                 "Access denied. Please login."
         });
-
     }
 
     const token =
@@ -110,9 +153,9 @@ function authenticateToken(req, res, next) {
     if (!token) {
 
         return res.status(401).json({
-            message: "Token missing."
+            message:
+                "Token missing."
         });
-
     }
 
     try {
@@ -133,7 +176,6 @@ function authenticateToken(req, res, next) {
             message:
                 "Invalid or expired token."
         });
-
     }
 }
 
@@ -141,14 +183,33 @@ function authenticateToken(req, res, next) {
 // HOME / TEST ROUTE
 // ==========================================
 
-app.get("/api", (req, res) => {
+app.get(
+    "/api",
+    async (req, res) => {
 
-    res.json({
-        message:
-            "Blog Application Backend is running successfully!"
-    });
+        try {
 
-});
+            await connectDatabase();
+
+            res.json({
+                message:
+                    "Blog Application Backend is running successfully!"
+            });
+
+        } catch (error) {
+
+            console.error(
+                "API test error:",
+                error
+            );
+
+            res.status(500).json({
+                message:
+                    "Backend is running, but MongoDB connection failed."
+            });
+        }
+    }
+);
 
 // ==========================================
 // REGISTER USER
@@ -159,6 +220,8 @@ app.post(
     async (req, res) => {
 
         try {
+
+            await connectDatabase();
 
             const {
                 name,
@@ -177,14 +240,24 @@ app.post(
                     message:
                         "Please fill all fields."
                 });
-
             }
 
             const cleanName =
-                name.trim();
+                String(name).trim();
 
             const cleanEmail =
-                email.trim().toLowerCase();
+                String(email)
+                    .trim()
+                    .toLowerCase();
+
+            // Validate password
+            if (password.length < 6) {
+
+                return res.status(400).json({
+                    message:
+                        "Password must be at least 6 characters."
+                });
+            }
 
             // Check existing user
             const existingUser =
@@ -198,7 +271,6 @@ app.post(
                     message:
                         "Email already registered."
                 });
-
             }
 
             // Hash password
@@ -211,15 +283,17 @@ app.post(
             // Create user
             const newUser = {
 
-                name: cleanName,
+                name:
+                    cleanName,
 
-                email: cleanEmail,
+                email:
+                    cleanEmail,
 
-                password: hashedPassword,
+                password:
+                    hashedPassword,
 
                 createdAt:
                     new Date()
-
             };
 
             const result =
@@ -227,7 +301,7 @@ app.post(
                     newUser
                 );
 
-            res.status(201).json({
+            return res.status(201).json({
 
                 message:
                     "Registration successful.",
@@ -242,9 +316,7 @@ app.post(
 
                     email:
                         newUser.email
-
                 }
-
             });
 
         } catch (error) {
@@ -254,13 +326,20 @@ app.post(
                 error
             );
 
-            res.status(500).json({
+            // Handle duplicate email
+            if (error.code === 11000) {
+
+                return res.status(400).json({
+                    message:
+                        "Email already registered."
+                });
+            }
+
+            return res.status(500).json({
                 message:
                     "Server error during registration."
             });
-
         }
-
     }
 );
 
@@ -273,6 +352,8 @@ app.post(
     async (req, res) => {
 
         try {
+
+            await connectDatabase();
 
             const {
                 email,
@@ -288,11 +369,12 @@ app.post(
                     message:
                         "Please enter email and password."
                 });
-
             }
 
             const cleanEmail =
-                email.trim().toLowerCase();
+                String(email)
+                    .trim()
+                    .toLowerCase();
 
             // Find user
             const user =
@@ -306,7 +388,6 @@ app.post(
                     message:
                         "Invalid email or password."
                 });
-
             }
 
             // Check password
@@ -322,13 +403,11 @@ app.post(
                     message:
                         "Invalid email or password."
                 });
-
             }
 
             // Create JWT
             const token =
                 jwt.sign(
-
                     {
                         id:
                             user._id.toString(),
@@ -343,17 +422,18 @@ app.post(
                     JWT_SECRET,
 
                     {
-                        expiresIn: "7d"
+                        expiresIn:
+                            "7d"
                     }
-
                 );
 
-            res.json({
+            return res.json({
 
                 message:
                     "Login successful.",
 
-                token: token,
+                token:
+                    token,
 
                 user: {
 
@@ -365,9 +445,7 @@ app.post(
 
                     email:
                         user.email
-
                 }
-
             });
 
         } catch (error) {
@@ -377,25 +455,26 @@ app.post(
                 error
             );
 
-            res.status(500).json({
+            return res.status(500).json({
                 message:
                     "Server error during login."
             });
-
         }
-
     }
 );
 
 // ==========================================
 // GET ALL BLOGS
+// PUBLIC ROUTE
 // ==========================================
 
 app.get(
     "/api/blogs",
-   authenticateToken, async (req, res) => {
+    async (req, res) => {
 
         try {
+
+            await connectDatabase();
 
             const blogs =
                 await blogsCollection
@@ -406,32 +485,36 @@ app.get(
                     .toArray();
 
             const formattedBlogs =
-                blogs.map(blog => ({
+                blogs.map(
+                    function (blog) {
 
-                    id:
-                        blog._id.toString(),
+                        return {
 
-                    title:
-                        blog.title,
+                            id:
+                                blog._id.toString(),
 
-                    content:
-                        blog.content,
+                            title:
+                                blog.title,
 
-                    author:
-                        blog.author,
+                            content:
+                                blog.content,
 
-                    authorId:
-                        blog.authorId,
+                            author:
+                                blog.author,
 
-                    createdAt:
-                        blog.createdAt,
+                            authorId:
+                                blog.authorId,
 
-                    updatedAt:
-                        blog.updatedAt
+                            createdAt:
+                                blog.createdAt,
 
-                }));
+                            updatedAt:
+                                blog.updatedAt
+                        };
+                    }
+                );
 
-            res.json(
+            return res.json(
                 formattedBlogs
             );
 
@@ -442,18 +525,17 @@ app.get(
                 error
             );
 
-            res.status(500).json({
+            return res.status(500).json({
                 message:
                     "Unable to get blogs."
             });
-
         }
-
     }
 );
 
 // ==========================================
 // GET SINGLE BLOG
+// PUBLIC ROUTE
 // ==========================================
 
 app.get(
@@ -461,6 +543,8 @@ app.get(
     async (req, res) => {
 
         try {
+
+            await connectDatabase();
 
             const id =
                 req.params.id;
@@ -473,7 +557,6 @@ app.get(
                     message:
                         "Invalid blog ID."
                 });
-
             }
 
             const blog =
@@ -488,10 +571,9 @@ app.get(
                     message:
                         "Blog not found."
                 });
-
             }
 
-            res.json({
+            return res.json({
 
                 id:
                     blog._id.toString(),
@@ -513,7 +595,6 @@ app.get(
 
                 updatedAt:
                     blog.updatedAt
-
             });
 
         } catch (error) {
@@ -523,18 +604,17 @@ app.get(
                 error
             );
 
-            res.status(500).json({
+            return res.status(500).json({
                 message:
                     "Unable to get blog."
             });
-
         }
-
     }
 );
 
 // ==========================================
 // CREATE BLOG
+// PROTECTED ROUTE
 // ==========================================
 
 app.post(
@@ -543,6 +623,8 @@ app.post(
     async (req, res) => {
 
         try {
+
+            await connectDatabase();
 
             const {
                 title,
@@ -558,16 +640,32 @@ app.post(
                     message:
                         "Title and content are required."
                 });
+            }
 
+            const cleanTitle =
+                String(title).trim();
+
+            const cleanContent =
+                String(content).trim();
+
+            if (
+                !cleanTitle ||
+                !cleanContent
+            ) {
+
+                return res.status(400).json({
+                    message:
+                        "Title and content cannot be empty."
+                });
             }
 
             const newBlog = {
 
                 title:
-                    title.trim(),
+                    cleanTitle,
 
                 content:
-                    content.trim(),
+                    cleanContent,
 
                 author:
                     req.user.name,
@@ -580,7 +678,6 @@ app.post(
 
                 updatedAt:
                     new Date()
-
             };
 
             const result =
@@ -588,7 +685,7 @@ app.post(
                     newBlog
                 );
 
-            res.status(201).json({
+            return res.status(201).json({
 
                 message:
                     "Blog created successfully.",
@@ -615,9 +712,7 @@ app.post(
 
                     updatedAt:
                         newBlog.updatedAt
-
                 }
-
             });
 
         } catch (error) {
@@ -627,18 +722,17 @@ app.post(
                 error
             );
 
-            res.status(500).json({
+            return res.status(500).json({
                 message:
                     "Unable to create blog."
             });
-
         }
-
     }
 );
 
 // ==========================================
 // UPDATE BLOG
+// PROTECTED ROUTE
 // ==========================================
 
 app.put(
@@ -647,6 +741,8 @@ app.put(
     async (req, res) => {
 
         try {
+
+            await connectDatabase();
 
             const id =
                 req.params.id;
@@ -659,7 +755,6 @@ app.put(
                     message:
                         "Invalid blog ID."
                 });
-
             }
 
             const blog =
@@ -674,7 +769,6 @@ app.put(
                     message:
                         "Blog not found."
                 });
-
             }
 
             // Only owner can edit
@@ -687,7 +781,6 @@ app.put(
                     message:
                         "You can only edit your own blog."
                 });
-
             }
 
             const {
@@ -704,7 +797,23 @@ app.put(
                     message:
                         "Title and content are required."
                 });
+            }
 
+            const cleanTitle =
+                String(title).trim();
+
+            const cleanContent =
+                String(content).trim();
+
+            if (
+                !cleanTitle ||
+                !cleanContent
+            ) {
+
+                return res.status(400).json({
+                    message:
+                        "Title and content cannot be empty."
+                });
             }
 
             const updatedAt =
@@ -721,18 +830,15 @@ app.put(
                     $set: {
 
                         title:
-                            title.trim(),
+                            cleanTitle,
 
                         content:
-                            content.trim(),
+                            cleanContent,
 
                         updatedAt:
                             updatedAt
-
                     }
-
                 }
-
             );
 
             const updatedBlog =
@@ -741,7 +847,7 @@ app.put(
                         new ObjectId(id)
                 });
 
-            res.json({
+            return res.json({
 
                 message:
                     "Blog updated successfully.",
@@ -768,9 +874,7 @@ app.put(
 
                     updatedAt:
                         updatedBlog.updatedAt
-
                 }
-
             });
 
         } catch (error) {
@@ -780,18 +884,17 @@ app.put(
                 error
             );
 
-            res.status(500).json({
+            return res.status(500).json({
                 message:
                     "Unable to update blog."
             });
-
         }
-
     }
 );
 
 // ==========================================
 // DELETE BLOG
+// PROTECTED ROUTE
 // ==========================================
 
 app.delete(
@@ -800,6 +903,8 @@ app.delete(
     async (req, res) => {
 
         try {
+
+            await connectDatabase();
 
             const id =
                 req.params.id;
@@ -812,7 +917,6 @@ app.delete(
                     message:
                         "Invalid blog ID."
                 });
-
             }
 
             const blog =
@@ -827,7 +931,6 @@ app.delete(
                     message:
                         "Blog not found."
                 });
-
             }
 
             // Only owner can delete
@@ -840,7 +943,6 @@ app.delete(
                     message:
                         "You can only delete your own blog."
                 });
-
             }
 
             await blogsCollection.deleteOne({
@@ -848,11 +950,10 @@ app.delete(
                     new ObjectId(id)
             });
 
-            res.json({
+            return res.json({
 
                 message:
                     "Blog deleted successfully."
-
             });
 
         } catch (error) {
@@ -862,91 +963,38 @@ app.delete(
                 error
             );
 
-            res.status(500).json({
+            return res.status(500).json({
                 message:
                     "Unable to delete blog."
             });
-
         }
-
     }
 );
 
 // ==========================================
-// CONNECT TO MONGODB AND START SERVER
+// ERROR HANDLER
 // ==========================================
 
-async function startServer() {
-
-    try {
-
-        await client.connect();
-
-        db =
-            client.db("blog_application");
-
-        usersCollection =
-            db.collection("users");
-
-        blogsCollection =
-            db.collection("blogs");
-
-        // Create unique email index
-        await usersCollection.createIndex(
-            {
-                email: 1
-            },
-            {
-                unique: true
-            }
-        );
-
-        console.log(
-            "=========================================="
-        );
-
-        console.log(
-            "MongoDB Connected Successfully!"
-        );
-
-        console.log(
-            "Database: blog_application"
-        );
-
-        console.log(
-            "Blog Application Backend Started"
-        );
-
-        console.log(
-            `Server running at http://localhost:${PORT}`
-        );
-
-        console.log(
-            "=========================================="
-        );
-
-        app.listen(PORT, "0.0.0.0", () => {
-    console.log("==========================================");
-    console.log("Blog Application Backend Started");
-    console.log(`Server running at http://localhost:${PORT}`);
-    console.log(`Network access: http://0.0.0.0:${PORT}`);
-    console.log("==========================================");
-});
-
-    } catch (error) {
+app.use(
+    function (error, req, res, next) {
 
         console.error(
-            "MongoDB connection failed:"
+            "Unexpected server error:",
+            error
         );
 
-        console.error(
-            error.message
-        );
-
-        process.exit(1);
-
+        res.status(500).json({
+            message:
+                "Internal server error."
+        });
     }
+);
 
-}
+// ==========================================
+// VERCEL EXPORT
+// ==========================================
 
-startServer();
+// IMPORTANT:
+// Do NOT use app.listen() on Vercel.
+
+module.exports = app;
